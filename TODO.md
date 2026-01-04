@@ -1,0 +1,8 @@
+- [x] Update requirements.txt with pandas, numpy, scikit-learn, matplotlib, requests, joblib
+- [x] Create src/ directory
+- [x] Create models/ directory
+- [x] Create src/train_model.py: Load data, define flood risk labels, train RandomForest, save model
+- [x] Create src/weather_api.py: Function to fetch live weather data from OpenWeather API
+- [x] Edit streamlit_app.py: Load model, fetch live data, predict flood risk, visualize
+- [x] Run training script to generate model
+- [ ] Test the app (requires OpenWeather API key)
