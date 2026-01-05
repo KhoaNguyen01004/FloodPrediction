@@ -9,10 +9,17 @@ FLOOD_THRESHOLDS = {
     'medium': 50    # Medium: 20-50mm, High: >50mm
 }
 
-# List of Vietnamese cities (from dataset: 40 provinces/cities, Jan 2009 - Jun 2021)
+# List of Vietnamese cities (34 subdivisions from vietnam_city_coords.json)
+# src/config.py
 VIETNAM_CITIES = [
-    "Bac Lieu", "Ho Chi Minh City", "Tam Ky", "Ben Tre", "Hoa Binh", "Tan An", "Bien Hoa", "Hong Gai", "Thai Nguyen",
-    "Buon Me Thuot", "Hue", "Thanh Hoa", "Ca Mau", "Long Xuyen", "Tra Vinh", "Cam Pha", "My Tho", "Tuy Hoa", "Cam Ranh",
-    "Nam Dinh", "Uong Bi", "Can Tho", "Nha Trang", "Viet Tri", "Chau Doc", "Phan Rang", "Vinh", "Da Lat", "Phan Thiet",
-    "Vinh Long", "Ha Noi", "Play Cu", "Vung Tau", "Hai Duong", "Qui Nhon", "Yen Bai", "Hai Phong", "Rach Gia", "Hanoi", "Soc Trang"
+    # 11 Units that remained unchanged (mostly mountainous/key areas)
+    "Hanoi", "Hue", "Quang Ninh", "Thanh Hoa", "Nghe An", "Ha Tinh", 
+    "Cao Bang", "Lai Chau", "Dien Bien", "Son La", "Lang Son",
+    
+    # 23 Newly formed/merged units
+    "Ho Chi Minh City", "Hai Phong", "Da Nang", "Can Tho",
+    "Tuyen Quang", "Lao Cai", "Thai Nguyen", "Phu Tho", "Bac Ninh", 
+    "Hung Yen", "Ninh Binh", "Quang Tri", "Quang Ngai", "Gia Lai", 
+    "Khanh Hoa", "Lam Dong", "Dak Lak", "Dong Nai", "Tay Ninh", 
+    "Vinh Long", "Dong Thap", "An Giang", "Ca Mau"
 ]

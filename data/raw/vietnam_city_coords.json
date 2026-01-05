@@ -1,0 +1,172 @@
+[
+    {
+        "location": "Hanoi",
+        "lat": 21.0285,
+        "lon": 105.8542
+    },
+    {
+        "location": "Ho Chi Minh City",
+        "lat": 10.8231,
+        "lon": 106.6297
+    },
+    {
+        "location": "Hai Phong",
+        "lat": 20.8449,
+        "lon": 106.6881
+    },
+    {
+        "location": "Da Nang",
+        "lat": 16.0544,
+        "lon": 108.2022
+    },
+    {
+        "location": "Can Tho",
+        "lat": 10.0333,
+        "lon": 105.7833
+    },
+    {
+        "location": "Hue",
+        "lat": 16.4637,
+        "lon": 107.5908
+    },
+    {
+        "location": "Quang Ninh",
+        "lat": 21.0069,
+        "lon": 107.2947
+    },
+    {
+        "location": "Thanh Hoa",
+        "lat": 19.8075,
+        "lon": 105.7764
+    },
+    {
+        "location": "Nghe An",
+        "lat": 18.6667,
+        "lon": 105.6667
+    },
+    {
+        "location": "Ha Tinh",
+        "lat": 18.3333,
+        "lon": 105.9000
+    },
+    {
+        "location": "Cao Bang",
+        "lat": 22.6667,
+        "lon": 106.2500
+    },
+    {
+        "location": "Lai Chau",
+        "lat": 22.3833,
+        "lon": 103.4667
+    },
+    {
+        "location": "Dien Bien",
+        "lat": 21.3833,
+        "lon": 103.0167
+    },
+    {
+        "location": "Son La",
+        "lat": 21.3289,
+        "lon": 103.9117
+    },
+    {
+        "location": "Lang Son",
+        "lat": 21.8500,
+        "lon": 106.7500
+    },
+    {
+        "location": "Tuyen Quang",
+        "lat": 21.8167,
+        "lon": 105.2167
+    },
+    {
+        "location": "Lao Cai",
+        "lat": 22.4833,
+        "lon": 103.9667
+    },
+    {
+        "location": "Thai Nguyên",
+        "lat": 21.5833,
+        "lon": 105.8333
+    },
+    {
+        "location": "Phu Tho",
+        "lat": 21.3222,
+        "lon": 105.3944
+    },
+    {
+        "location": "Bac Ninh",
+        "lat": 21.1833,
+        "lon": 106.0667
+    },
+    {
+        "location": "Hung Yen",
+        "lat": 20.6500,
+        "lon": 106.0500
+    },
+    {
+        "location": "Ninh Binh",
+        "lat": 20.2500,
+        "lon": 105.9667
+    },
+    {
+        "location": "Quang Tri",
+        "lat": 16.7406,
+        "lon": 107.1849
+    },
+    {
+        "location": "Quang Ngai",
+        "lat": 15.1167,
+        "lon": 108.8000
+    },
+    {
+        "location": "Gia Lai",
+        "lat": 13.9833,
+        "lon": 108.0000
+    },
+    {
+        "location": "Khanh Hoa",
+        "lat": 12.2500,
+        "lon": 109.1833
+    },
+    {
+        "location": "Lam Dong",
+        "lat": 11.9404,
+        "lon": 108.4583
+    },
+    {
+        "location": "Dak Lak",
+        "lat": 12.6667,
+        "lon": 108.0333
+    },
+    {
+        "location": "Dong Nai",
+        "lat": 10.9500,
+        "lon": 106.8167
+    },
+    {
+        "location": "Tay Ninh",
+        "lat": 11.3000,
+        "lon": 106.1000
+    },
+    {
+        "location": "Vinh Long",
+        "lat": 10.2500,
+        "lon": 105.9667
+    },
+    {
+        "location": "Dong Thap",
+        "lat": 10.4500,
+        "lon": 105.6333
+    },
+    {
+        "location": "An Giang",
+        "lat": 10.3833,
+        "lon": 105.4167
+    },
+    {
+        "location": "Ca Mau",
+        "lat": 9.1833,
+        "lon": 105.1500
+    }
+]

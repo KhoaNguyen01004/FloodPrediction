@@ -1,180 +1,233 @@
 # 🌧️ Vietnam Flood Prediction App
 
-A machine learning-powered Streamlit application for predicting flood risk in Vietnam using real-time weather data and historical flood patterns.
+A machine learning-powered Streamlit application for predicting flood risk in Vietnam using real-time weather data and historical flood patterns from EM-DAT disaster database.
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://vietnam-flood-prediction.streamlit.app/)
 
 ## 📋 Overview
 
-This application leverages machine learning to predict flood risk across 40 Vietnamese provinces and cities. The model is trained on historical weather data from January 2009 to June 2021 and uses live weather data from OpenWeather API to provide real-time flood risk assessments.
+This application predicts flood risk across Vietnam's 34 administrative subdivisions by combining historical flood data (2005-2023) with real-time weather conditions. The system uses machine learning to analyze weather patterns and provide risk assessments for informed decision-making.
 
 ### Key Features
 
-- **Real-time Weather Data**: Fetches current weather conditions using OpenWeather API
-- **Machine Learning Prediction**: RandomForest classifier trained on historical Vietnam weather data
-- **Interactive UI**: User-friendly Streamlit interface with searchable city dropdown
-- **Visual Analytics**: Weather feature visualization with flood risk indicators
-- **Comprehensive Coverage**: Supports all 40 provinces/cities from the training dataset
+- **Historical Data Integration**: Processes EM-DAT disaster database for flood events
+- **Real-time Weather Data**: Fetches current conditions using OpenWeather API
+- **Machine Learning Prediction**: RandomForest classifier trained on synthetic weather features
+- **Interactive UI**: Streamlit interface for selecting locations and viewing predictions
+- **Comprehensive Coverage**: Supports all 34 Vietnamese administrative subdivisions
 
-## 🏗️ Architecture
+## 🏗️ Project Structure
 
 ```
 flood-prediction-app/
-├── streamlit_app.py          # Main Streamlit application
+├── streamlit_app.py                 # Main Streamlit web application
 ├── src/
-│   ├── train_model.py        # Model training script
-│   ├── weather_api.py        # OpenWeather API integration
-│   └── config.py            # Configuration and constants
+│   ├── config.py                   # Configuration constants and API keys
+│   ├── coordinates.py              # City coordinate loading and mapping
+│   ├── process_disaster_data.py    # Disaster data processing and feature generation
+│   ├── train_model.py              # Machine learning model training
+│   └── weather_api.py              # OpenWeather API integration
+├── data/
+│   ├── raw/
+│   │   ├── disaster_in_vietnam.csv # EM-DAT disaster database
+│   │   └── vietnam_city_coords.json # City coordinates and names
+│   └── processed/
+│       └── flood_training.csv      # Processed training dataset
 ├── models/
-│   └── flood_model.pkl      # Trained RandomForest model
-├── data/                    # Training datasets
-├── requirements.txt         # Python dependencies
-└── README.md               # Project documentation
+│   └── flood_model.pkl             # Trained RandomForest model
+├── requirements.txt                # Python dependencies
+├── TODO.md                         # Project task tracking
+├── LICENSE                         # MIT License
+└── README.md                       # This documentation
 ```
+
+## 📁 File Descriptions
+
+### Core Application Files
+
+- **`streamlit_app.py`**: The main web application built with Streamlit. Provides an interactive interface where users can select a Vietnamese subdivision, fetch current weather data, and receive flood risk predictions with visualizations.
+
+- **`src/config.py`**: Contains configuration constants including the OpenWeather API key, flood risk thresholds (Low: <20mm, Medium: 20-50mm, High: >50mm), and the list of 34 Vietnamese administrative subdivisions.
+
+### Data Processing Files
+
+- **`src/coordinates.py`**: Loads city coordinates from the JSON file and provides functions to get latitude/longitude for any Vietnamese subdivision. Handles coordinate conversion and caching for efficient API calls.
+
+- **`src/process_disaster_data.py`**: Processes the EM-DAT disaster database to create training data. Filters flood events from 2005-2023, maps disaster locations to Vietnamese subdivisions, and generates synthetic weather features based on historical flood risk levels.
+
+- **`src/train_model.py`**: Trains the machine learning model using the processed disaster data. Uses RandomForest classifier with weather features and month to predict flood risk levels.
+
+### API Integration Files
+
+- **`src/weather_api.py`**: Handles communication with the OpenWeather API. Fetches current weather data (temperature, humidity, wind, rainfall, cloud cover, pressure) for any location using coordinates.
+
+### Data Files
+
+- **`data/raw/disaster_in_vietnam.csv`**: EM-DAT International Disaster Database containing historical disaster records for Vietnam, including flood events with location, date, and damage information.
+
+- **`data/raw/vietnam_city_coords.json`**: JSON file containing the 34 administrative subdivisions of Vietnam with their names, latitudes, and longitudes.
+
+- **`data/processed/flood_training.csv`**: Processed training dataset with synthetic weather features and flood risk labels generated from historical disaster data.
+
+- **`models/flood_model.pkl`**: Serialized trained RandomForest model ready for predictions.
+
+## 🔄 Data Pipeline
+
+The flood prediction system follows this data processing and prediction pipeline:
+
+### 1. Data Preparation Phase
+- **Input**: EM-DAT disaster database (`disaster_in_vietnam.csv`)
+- **Processing**: Filter for flood events in Vietnam (2005-2023)
+- **Location Mapping**: Match disaster locations to 34 Vietnamese subdivisions using partial string matching
+- **Feature Generation**: Create synthetic weather features based on historical flood risk:
+  - Low Risk: Normal weather conditions (low rainfall, moderate temperatures)
+  - Medium Risk: Elevated conditions (moderate rainfall, variable temperatures)
+  - High Risk: Extreme conditions (high rainfall, low temperatures, high humidity)
+- **Output**: Training dataset (`flood_training.csv`) with weather features and risk labels
+
+### 2. Model Training Phase
+- **Algorithm**: RandomForest Classifier (ensemble of decision trees)
+- **Features**: max/min temperature, wind speed, rainfall, humidity, cloud cover, pressure, month
+- **Target**: Flood risk level (0=Low, 1=Medium, 2=High)
+- **Validation**: 80/20 train/test split with classification metrics
+- **Output**: Trained model (`flood_model.pkl`)
+
+### 3. Prediction Phase
+- **Input**: User selects Vietnamese subdivision
+- **Weather Fetching**: Get current weather data from OpenWeather API using coordinates
+- **Prediction**: Use trained model to predict flood risk based on current conditions
+- **Output**: Risk assessment with color-coded indicators and weather visualizations
+
+## 🧠 Machine Learning Algorithm
+
+### Random Forest Classifier
+
+**Why Random Forest?**
+- Handles both numerical and categorical features well
+- Robust to overfitting through ensemble averaging
+- Provides feature importance insights
+- Works well with imbalanced datasets (most locations have low flood risk)
+
+**Algorithm Details:**
+- **Number of Trees**: 100 decision trees in the forest
+- **Splitting Criteria**: Gini impurity for classification
+- **Max Depth**: Unlimited (trees grow until pure leaves)
+- **Bootstrap Sampling**: Each tree trained on random subset of data
+- **Feature Selection**: Random subset of features considered at each split
+
+**Training Process:**
+1. Create multiple decision trees using bootstrap sampling
+2. Each tree votes on the prediction
+3. Final prediction is the majority vote across all trees
+4. Model learns patterns between weather conditions and historical flood occurrences
+
+**Performance Metrics:**
+- **Accuracy**: 99% on validation set (highly imbalanced dataset with 98.4% low-risk samples)
+- **Class Performance**:
+  - Low Risk (Class 0): 99% precision, 100% recall, 99% F1-score
+  - Medium Risk (Class 1): 67% precision, 20% recall, 31% F1-score
+  - High Risk (Class 2): 100% precision, 50% recall, 67% F1-score
+- **Overall**: Strong performance on dominant low-risk class, moderate on rare medium/high-risk events
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-
 - Python 3.8+
-- OpenWeather API key (free tier available at [openweathermap.org](https://openweathermap.org/api))
+- OpenWeather API key (free at [openweathermap.org](https://openweathermap.org/api))
 
 ### Installation
 
-1. **Clone the repository**
+1. **Clone and setup**:
    ```bash
    git clone <repository-url>
    cd flood-prediction-app
-   ```
-
-2. **Create virtual environment**
-   ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install dependencies**
-   ```bash
+   source venv/bin/activate  # Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
-4. **Configure API Key**
-   - Open `src/config.py`
-   - Replace `"your_api_key_here"` with your OpenWeather API key
+2. **Configure API key**:
+   - Edit `src/config.py`
+   - Replace `OPENWEATHER_API_KEY` with your API key
 
-5. **Train the model** (optional - pre-trained model included)
+3. **Process data and train model**:
    ```bash
+   python src/process_disaster_data.py
    python src/train_model.py
    ```
 
-6. **Run the application**
+4. **Run the application**:
    ```bash
    streamlit run streamlit_app.py
    ```
 
-## 📊 Dataset Information
+## 📊 Usage
 
-### Training Data
-- **Time Period**: January 1, 2009 - June 18, 2021
-- **Coverage**: 40 Vietnamese provinces and cities
-- **Features**: Temperature, humidity, wind speed, rainfall, cloud cover, pressure
-- **Target**: Flood risk classification (Low/Medium/High)
-
-### Supported Cities
-Bac Lieu, Ho Chi Minh City, Tam Ky, Ben Tre, Hoa Binh, Tan An, Bien Hoa, Hong Gai, Thai Nguyen, Buon Me Thuot, Hue, Thanh Hoa, Ca Mau, Long Xuyen, Tra Vinh, Cam Pha, My Tho, Tuy Hoa, Cam Ranh, Nam Dinh, Uong Bi, Can Tho, Nha Trang, Viet Tri, Chau Doc, Phan Rang, Vinh, Da Lat, Phan Thiet, Vinh Long, Ha Noi, Play Cu, Vung Tau, Hai Duong, Qui Nhon, Yen Bai, Hai Phong, Rach Gia, Hanoi, Soc Trang
-
-## 🎯 Flood Risk Classification
-
-The model classifies flood risk based on rainfall thresholds:
-
-- **🟢 Low Risk**: Rainfall < 20mm
-- **🟡 Medium Risk**: Rainfall 20-50mm
-- **🔴 High Risk**: Rainfall > 50mm
-
-## 🧠 Machine Learning Model
-
-### Algorithm
-- **RandomForest Classifier** with 100 estimators
-- Trained on historical weather-flood correlation data
-
-### Features Used
-- Maximum temperature (°C)
-- Minimum temperature (°C)
-- Wind speed (m/s)
-- Rainfall (mm)
-- Humidity (%)
-- Cloud cover (%)
-- Atmospheric pressure (hPa)
-
-### Performance
-- Model accuracy: ~85% on validation set
-- Trained using scikit-learn with stratified cross-validation
+1. **Select Location**: Choose from 34 Vietnamese administrative subdivisions
+2. **Fetch Weather**: Click "Predict Flood Risk" to get current conditions
+3. **View Results**:
+   - Weather metrics dashboard
+   - Flood risk prediction (Low/Medium/High) with color coding
+   - Feature importance visualization
+   - Raw data option for detailed inspection
 
 ## 🔧 Configuration
 
-### API Configuration (`src/config.py`)
+### Flood Risk Thresholds
 ```python
-# OpenWeather API Key
-OPENWEATHER_API_KEY = "your_api_key_here"
-
-# Flood risk thresholds (mm)
 FLOOD_THRESHOLDS = {
-    'low': 20,      # Low: < 20mm
+    'low': 20,      # Low: < 20mm rainfall
     'medium': 50    # Medium: 20-50mm, High: >50mm
 }
-
-# Supported cities
-VIETNAM_CITIES = [...]
 ```
 
-## 📱 Usage
+### Supported Locations
+The app supports all 34 administrative subdivisions of Vietnam:
+- Ha Noi, Ho Chi Minh City, Hai Phong, Da Nang, Can Tho, Hue
+- Bac-Thai, Ha-Bac, Vinh-Phu, Ha-Tay, Hai-Hung, Ha-Nam-Ninh
+- Nghe-Tinh, Quang-Binh, Quang-Tri, Quang-Nam-Da-Nang
+- Nghia-Binh, Phu-Khanh, Thuan-Hai, Gia-Lai-Kon-Tum, Dak-Lak, Lam-Dong
+- Song-Be, Tay-Ninh, Dong-Nai, Long-An, Dong-Thap, An-Giang
+- Tien-Giang, Ben-Tre, Cuu-Long, Hau-Giang, Kien-Giang, Minh-Hai
 
-1. **Select City**: Use the searchable dropdown to choose a Vietnamese city
-2. **Predict Risk**: Click "Predict Flood Risk" to fetch weather data and get prediction
-3. **View Results**:
-   - Current weather metrics in organized cards
-   - Flood risk prediction with color-coded alerts
-   - Weather feature visualization
-   - Option to view raw API data
+## 📈 Model Performance
 
-## 🔍 API Integration
+**Training Dataset**: 7,752 samples (34 locations × 19 years × 12 months)
+- Low Risk: 7,630 samples (98.4%)
+- Medium Risk: 83 samples (1.1%)
+- High Risk: 39 samples (0.5%)
 
-### OpenWeather API
-- **Endpoint**: Current weather data
-- **Parameters**: City name, API key, metric units
-- **Rate Limit**: 1000 calls/day (free tier)
-
-### Data Processing
-- Raw API response transformed to match training features
-- Missing data handling with default values
-- Feature scaling and preprocessing
+**Classification Report**:
+```
+              precision    recall  f1-score   support
+Low              0.99       1.00      0.99      1526
+Medium           0.67       0.20      0.31        15
+High             1.00       0.50      0.67         8
+```
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create feature branch (`git checkout -b feature/new-feature`)
+3. Commit changes (`git commit -m 'Add new feature'`)
+4. Push to branch (`git push origin feature/new-feature`)
+5. Open Pull Request
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🙏 Acknowledgments
 
-- **Data Source**: Vietnam weather and flood historical data
-- **API Provider**: OpenWeatherMap for real-time weather data
-- **Framework**: Streamlit for web application
-- **ML Library**: scikit-learn for machine learning
+- **EM-DAT**: Disaster database provided by CRED/OFDA
+- **OpenWeatherMap**: Real-time weather API
+- **Streamlit**: Web application framework
+- **scikit-learn**: Machine learning library
 
-## 📞 Support
+## ⚠️ Disclaimer
 
-For questions or issues:
-- Open an issue on GitHub
-- Check the Streamlit documentation
-- Review OpenWeather API documentation
+This application provides educational flood risk estimates based on weather patterns and historical data. Always consult local authorities and official sources for emergency preparedness and flood warnings.
 
 ---
 
-**Note**: This application is for educational and informational purposes. Always consult local authorities for official flood warnings and emergency preparedness.
+**Vietnam Administrative Divisions**: The app uses Vietnam's 34 first-level administrative subdivisions as defined by the Vietnamese government, covering all provinces and centrally-administered cities.
