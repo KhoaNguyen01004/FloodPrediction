@@ -1,52 +1,58 @@
 import streamlit as st
 import pandas as pd
-import joblib
-import json
-import matplotlib.pyplot as plt
 from datetime import date
 import plotly.graph_objects as go
-from fpdf import FPDF
-import unicodedata
 import numpy as np
-from src.weather_api import get_weather_data
 from src.config import VIETNAM_CITIES, FLOOD_THRESHOLDS
+from src.utils import load_model, load_coords, load_region_encoder, load_features, load_feature_importance, CSS_STYLES, display_calculation_breakdown
+from src.prediction import perform_prediction
+from src.pdf_generator import generate_pdf_report
+from src.scenario_simulator import scenario_simulator
+from src.weather_api import get_weather_data
 
-def strip_accents(s):
-    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
 
-# Cache the model loading to avoid reloading on every rerun
-@st.cache_resource
-def load_model():
-    return joblib.load('models/flood_model.pkl')
-
-model = load_model()
-
-# Cache coordinates loading
-@st.cache_data
-def load_coords():
-    with open('data/raw/vietnam_city_coords.json', 'r') as f:
-        return json.load(f)
-
-coords_data = load_coords()
 
 st.set_page_config(page_title="Vietnam Flood Predictor 2026", layout="wide")
 
 # --- CUSTOM CSS FOR BETTER VISUALS ---
-st.markdown("""
-    <style>
-    .metric-card { background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #1c83e1; }
-    .risk-high { color: #ff4b4b; font-weight: bold; }
-    .risk-med { color: #ffa500; font-weight: bold; }
-    .risk-low { color: #008000; font-weight: bold; }
-    </style>
-    """, unsafe_allow_html=True)
+st.markdown(CSS_STYLES, unsafe_allow_html=True)
 
 st.title("Vietnam Flood Prediction (2026 Admin Structure)")
 st.write("Machine Learning analysis based on 34 First-Level Subdivisions.")
 
-# --- SIDEBAR SETTINGS ---
-st.sidebar.header("Location & Timing")
-city = st.sidebar.selectbox("Select Subdivision", VIETNAM_CITIES)
+tab1, tab2 = st.tabs(["Flood Prediction", "Model Performance"])
+
+with tab2:
+    st.header("Model Performance Comparison")
+    st.write("Comparison of different ML models on the test set (1671 samples).")
+
+    # Hardcoded comparison data from recent run
+    comparison_data = {
+        'Model': ['XGBoost (Calibrated)', 'Random Forest', 'SVM', 'Neural Network'],
+        'Accuracy': [0.991, 0.996, 0.974, 0.992],
+        'Macro F1': [0.966, 0.985, 0.916, 0.975],
+        'Medium Precision': [0.955, 0.977, 0.878, 0.977],
+        'Medium Recall': [0.977, 1.000, 1.000, 1.000]
+    }
+    df_comp = pd.DataFrame(comparison_data)
+    st.table(df_comp)
+
+    # Bar chart for accuracy
+    fig_acc = go.Figure(data=[go.Bar(x=df_comp['Model'], y=df_comp['Accuracy'], marker_color='blue')])
+    fig_acc.update_layout(title='Model Accuracy Comparison', yaxis_title='Accuracy')
+    st.plotly_chart(fig_acc)
+
+    # Bar chart for Macro F1
+    fig_f1 = go.Figure(data=[go.Bar(x=df_comp['Model'], y=df_comp['Macro F1'], marker_color='green')])
+    fig_f1.update_layout(title='Macro F1 Score Comparison', yaxis_title='Macro F1')
+    st.plotly_chart(fig_f1)
+
+    st.write("**Key Insights:** Random Forest achieves the highest accuracy (0.996) and best handles the imbalanced Medium class. XGBoost with calibration is a strong alternative.")
+
+with tab1:
+    # --- SIDEBAR SETTINGS ---
+    st.sidebar.header("Location & Timing")
+    city = st.sidebar.selectbox("Select Subdivision", VIETNAM_CITIES)
 # NEW: Date selection allows the model to "know" the season
 target_date = st.sidebar.date_input("Prediction Date", date.today())
 st.sidebar.info(f"Analyzing seasonal risk for: {target_date.strftime('%B')}")
@@ -84,53 +90,47 @@ if 'press_s' not in st.session_state:
     st.session_state.press_s = 1010.0
 if 'previous_scenario' not in st.session_state:
     st.session_state.previous_scenario = 'Custom'
+if 'chart_counter' not in st.session_state:
+    st.session_state.chart_counter = 0
 
 if st.button("Analyze & Predict Risk"):
     try:
-        # 1. Smart Data Source Selection
-        date_diff = abs((target_date - date.today()).days)
-        if date_diff <= 7:
-            # Use live API data
-            with st.spinner(f"Fetching live weather forecast for {city}..."):
-                weather_data = get_weather_data(city, target_date)
-            data_source = "Live Forecast"
-        else:
-            # Use historical averages
-            with st.spinner(f"Calculating seasonal averages for {city} in {target_date.strftime('%B')}..."):
-                df = pd.read_csv('data/processed/flood_training.csv')
-                month_df = df[df['month'] == target_date.month]
-                if month_df.empty:
-                    # Fallback defaults if no historical data for the month
-                    weather_data = {
-                        'max': 25.0,
-                        'min': 20.0,
-                        'wind': 5.0,
-                        'rain': 10.0,
-                        'humidi': 70.0,
-                        'cloud': 50.0,
-                        'pressure': 1010.0,
-                        'rain_last_3_days': 50.0,
-                        'month': target_date.month
-                    }
-                else:
-                    weather_data = {
-                        'max': month_df['max'].mean(),
-                        'min': month_df['min'].mean(),
-                        'wind': month_df['wind'].mean(),
-                        'rain': month_df['rain'].mean(),
-                        'humidi': month_df['humidi'].mean(),
-                        'cloud': month_df['cloud'].mean(),
-                        'pressure': month_df['pressure'].mean(),
-                        'rain_last_3_days': month_df['rain_last_3_days'].mean(),
-                        'month': target_date.month
-                    }
-            data_source = "Seasonal Historical Average"
+        weather_data, proba, risk, confidence, ml_features, data_source, base_proba = perform_prediction(city, target_date)
 
-        # 2. Ensure all required keys are present
-        required_keys = ['max', 'min', 'wind', 'rain', 'humidi', 'cloud', 'pressure', 'month', 'rain_last_3_days']
-        for key in required_keys:
-            if key not in weather_data:
-                weather_data[key] = 0.0  # Default if missing
+        # Recreate input_df for feature analysis
+        df_train = pd.read_csv('data/processed/flood_training.csv')
+
+        # Calculate boost for display purposes (using same logic as prediction.py)
+        rain_threshold, rain_3d_threshold = 50.0, 100.0
+
+        boost = 0
+        if weather_data['rain'] > rain_threshold:
+            boost += 0.2
+        if weather_data['rain_last_3_days'] > rain_3d_threshold:
+            boost += 0.2
+        if weather_data['humidi'] > 70:
+            boost += 0.1
+        if weather_data['wind'] > 8:
+            boost += 0.1
+        region_map = df_train.set_index('city')['region'].to_dict()
+        city_region = region_map.get(city, 'North')
+        encoder = load_region_encoder()
+        region_input = pd.DataFrame([[city_region]], columns=['region'])
+        region_encoded = encoder.transform(region_input)
+        region_encoded_df = pd.DataFrame(region_encoded, columns=encoder.get_feature_names_out(['region']))
+
+        # Interaction Features
+        weather_data_copy = weather_data.copy()
+        weather_data_copy['rain_north'] = weather_data['rain'] * (city_region == 'North')
+        weather_data_copy['rain_central'] = weather_data['rain'] * (city_region == 'Central')
+        weather_data_copy['rain_south'] = weather_data['rain'] * (city_region == 'South')
+
+        core_weather = ml_features + ['rain_north', 'rain_central', 'rain_south']
+        weather_df = pd.DataFrame([weather_data_copy])[core_weather]
+        input_df = pd.concat([weather_df, region_encoded_df], axis=1)
+
+        expected_features = load_features()
+        input_df = input_df.reindex(columns=expected_features, fill_value=0)
 
         # 3. UI Feedback for Data Source
         if data_source == "Live Forecast":
@@ -146,32 +146,6 @@ if st.button("Analyze & Predict Risk"):
         m3.metric("Rainfall", f"{weather_data['rain']:.1f} mm")
         m4.metric("Pressure", f"{weather_data['pressure']} hPa")
 
-        # 4. PREPARE FEATURES
-        # Add new features: temperature difference and interaction terms
-        weather_data['temp_diff'] = abs(weather_data['max'] - weather_data['min'])
-        weather_data['rain_humidi_interaction'] = weather_data['rain'] * weather_data['humidi']
-
-        ml_features = ['max', 'min', 'wind', 'rain', 'humidi', 'cloud', 'pressure', 'month', 'rain_last_3_days', 'temp_diff', 'rain_humidi_interaction']
-        input_df = pd.DataFrame([weather_data])[ml_features]
-
-        # 5. Predict with adjusted thresholds for better recall
-        proba = model.predict_proba(input_df)[0]
-        # Rule-based override: If it's peak season and rain is > 50mm, boost high risk probability
-        if weather_data['rain'] > 50 and weather_data['month'] in [9, 10, 11]:
-            proba[2] += 0.2
-            proba[0] -= 0.2
-        proba = np.clip(proba, 0, 1)
-        proba /= proba.sum()
-        thresholds = {0: 0.5, 1: 0.3, 2: 0.2}
-        prediction = 0
-        if proba[2] > thresholds[2]:
-            prediction = 2
-        elif proba[1] > thresholds[1]:
-            prediction = 1
-        risk_labels = {0: 'Low', 1: 'Medium', 2: 'High'}
-        risk = risk_labels[prediction]
-        confidence = max(proba) * 100  # Confidence score as percentage
-
         # Store data in session state for persistence
         st.session_state.weather_data = weather_data
         st.session_state.proba = proba
@@ -181,35 +155,18 @@ if st.button("Analyze & Predict Risk"):
         st.session_state.city = city
         st.session_state.target_date = target_date
 
+        # Sync slider session states for scenario simulator
+        st.session_state.rain_s = weather_data['rain']
+        st.session_state.rain72_s = weather_data['rain_last_3_days']
+        st.session_state.hum_s = weather_data['humidi']
+        st.session_state.max_s = weather_data['max']
+        st.session_state.min_s = weather_data['min']
+        st.session_state.wind_s = weather_data['wind']
+        st.session_state.cloud_s = weather_data['cloud']
+        st.session_state.press_s = weather_data['pressure']
+
         # Generate PDF report and store in session state
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=16, style='B')
-        pdf.cell(0, 10, "Vietnam Flood Risk Assessment Report", ln=True, align='C')
-        pdf.ln(10)
-        pdf.set_font("Arial", size=12)
-        pdf.cell(0, 10, f"Location: {strip_accents(city)}", ln=True)
-        pdf.cell(0, 10, f"Analysis Date: {target_date.strftime('%Y-%m-%d')}", ln=True)
-        pdf.cell(0, 10, f"Risk Level: {risk}", ln=True)
-        pdf.cell(0, 10, f"AI Confidence: {confidence:.1f}%", ln=True)
-        pdf.ln(5)
-        pdf.cell(0, 10, "Weather Conditions:", ln=True)
-        pdf.cell(0, 10, f"  - Max Temperature: {weather_data['max']:.1f} deg C", ln=True)
-        pdf.cell(0, 10, f"  - Min Temperature: {weather_data['min']:.1f} deg C", ln=True)
-        pdf.cell(0, 10, f"  - Humidity: {weather_data['humidi']}%", ln=True)
-        pdf.cell(0, 10, f"  - Rainfall (24h): {weather_data['rain']:.1f} mm", ln=True)
-        pdf.cell(0, 10, f"  - Rainfall (72h): {weather_data['rain_last_3_days']:.1f} mm", ln=True)
-        pdf.cell(0, 10, f"  - Wind Speed: {weather_data['wind']:.1f} m/s", ln=True)
-        pdf.cell(0, 10, f"  - Pressure: {weather_data['pressure']} hPa", ln=True)
-        pdf.ln(5)
-        pdf.cell(0, 10, f"Risk Assessment: {risk} flood risk detected.", ln=True)
-        if risk == 'High':
-            pdf.cell(0, 10, "Recommendation: Prepare for potential flooding. Monitor weather updates.", ln=True)
-        elif risk == 'Medium':
-            pdf.cell(0, 10, "Recommendation: Stay alert for localized flooding in low-lying areas.", ln=True)
-        else:
-            pdf.cell(0, 10, "Recommendation: Conditions appear stable.", ln=True)
-        st.session_state.pdf_data = bytes(pdf.output())
+        st.session_state.pdf_data = generate_pdf_report(city, target_date, risk, confidence, weather_data)
 
         # 6. Display Result & Map
         st.divider()
@@ -244,6 +201,36 @@ if st.button("Analyze & Predict Risk"):
             fig_proba.update_layout(title_text="AI Confidence Distribution")
             st.plotly_chart(fig_proba)
 
+            # Risk Gauge for Final Risk Score
+            st.subheader("📊 Overall Risk Score")
+            if risk == 'High':
+                steps = [
+                    {'range': [0, 20], 'color': "green"},
+                    {'range': [20, 100], 'color': "red"}
+                ]
+            elif risk == 'Medium':
+                steps = [
+                    {'range': [0, 30], 'color': "green"},
+                    {'range': [30, 70], 'color': "orange"},
+                    {'range': [70, 100], 'color': "red"}
+                ]
+            else:
+                steps = [
+                    {'range': [0, 70], 'color': "green"},
+                    {'range': [70, 100], 'color': "red"}
+                ]
+            fig_gauge = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=confidence if risk != 'Low' else 100 - confidence,
+                title={'text': f"Overall Risk: {risk}"},
+                gauge={
+                    'axis': {'range': [0, 100]},
+                    'bar': {'color': "black"},
+                    'steps': steps
+                }
+            ))
+            st.plotly_chart(fig_gauge, width='stretch')
+
             # 3. Historical "Twin" Comparison
             if risk == 'High':
                 st.subheader("📜 Historical Context")
@@ -260,51 +247,85 @@ if st.button("Analyze & Predict Risk"):
         with col_map:
             # Filter JSON for current city coordinates
             try:
+                coords_data = load_coords()
                 city_coord = next(item for item in coords_data if item["location"] == city)
                 map_data = pd.DataFrame([{
                     'lat': city_coord['lat'],
                     'lon': city_coord['lon']
                 }])
-                st.map(map_data, zoom=7, use_container_width=True)
+                st.map(map_data, zoom=7, width='stretch')
             except StopIteration:
                 st.error(f"Coordinates for {city} not found in the database.")
                 # Do not attempt to display map if coordinates not found
+
+            # Interactive Calculation Breakdown
+            with st.expander("Interactive Calculation Breakdown", expanded=True):
+                display_calculation_breakdown(base_proba, boost, weather_data, risk, confidence)
 
         # 7. ENHANCED FEATURE ANALYSIS
         st.divider()
         st.subheader("📊 Why did the model predict this?")
 
-        # Unit Mapping
-        units = {'max': '°C', 'min': '°C', 'wind': 'm/s', 'rain': 'mm', 'humidi': '%', 'cloud': '%', 'pressure': 'hPa', 'month': 'Mo', 'rain_last_3_days': 'mm', 'temp_diff': '°C', 'rain_humidi_interaction': 'mm*%'}
+        # Load feature importance
+        feature_importance_df = load_feature_importance()
 
-        # Create feature values table
-        feature_table = pd.DataFrame({
-            'Feature': [f.replace('_', ' ').title() for f in ml_features],
-            'Value': [f"{input_df.iloc[0][f]:.1f}{units[f]}" for f in ml_features]
+        # Display Feature Importance Chart
+        st.write("**Feature Importance (Global Weights)**")
+        st.write("These are the relative weights of each feature in the model's decision-making process, based on the XGBoost algorithm.")
+        fig_importance = go.Figure(go.Bar(
+            x=feature_importance_df['importance'],
+            y=[f.replace('_', ' ').title() for f in feature_importance_df['feature']],
+            orientation='h',
+            marker_color='skyblue'
+        ))
+        fig_importance.update_layout(
+            title="Feature Importance in Flood Risk Prediction",
+            xaxis_title="Importance Score",
+            yaxis_title="Feature",
+            height=400
+        )
+        st.plotly_chart(fig_importance, width='stretch')
+
+        # Get all features
+        all_features = load_features()
+
+        # Unit Mapping for all features
+        units = {'max': '°C', 'rain': 'mm', 'humidi': '%', 'month_sin': '', 'month_cos': '', 'rain_north': 'mm', 'rain_central': 'mm', 'rain_south': 'mm', 'region_North': '', 'region_Central': '', 'region_South': '', 'region_Unknown': ''}
+
+        # Create feature values table with importance
+        feature_df = pd.DataFrame({
+            'Feature': [f.replace('_', ' ').title() for f in all_features],
+            'Value': [f"{input_df.iloc[0][f]:.1f}{units.get(f, '')}" if f in ['max', 'rain', 'humidi', 'month_sin', 'month_cos', 'rain_north', 'rain_central', 'rain_south'] else f"{int(input_df.iloc[0][f])}" for f in all_features],
+            'Importance': [feature_importance_df.set_index('feature').loc[f, 'importance'] for f in all_features]
         })
-        st.table(feature_table)
+        feature_df = feature_df.sort_values('Importance', ascending=False)
+        st.table(feature_df)
 
         st.write("**Feature Impact Guide**")
-        # Create comprehensive feature impact table
+        # Create comprehensive feature impact table with importance
         data_label = "Current" if target_date >= date.today() else "Historical"
-        impact_table = pd.DataFrame({
-            "Feature": [f.replace('_', ' ').title() for f in ml_features],
-            data_label: [f"{weather_data[f]:.1f}{units[f]}" for f in ml_features],
-            "Risk Note": [
-                "Higher temp = lower risk",
-                "Lower temp = higher risk",
-                "Strong wind = higher risk",
-                "Heavy rain = highest risk",
-                "High humidity + rain = very high risk",
-                "Cloudy conditions = moderate risk",
-                "Low pressure = storm risk",
-                "Seasonal patterns affect risk",
-                "Accumulated rain = saturation risk",
-                "Large temp range = weather instability",
-                "Rain × humidity interaction = flood potential"
-            ]
+        risk_notes = [
+            "Warmer temperatures help dry the ground, reducing flood risk",
+            "Heavy rainfall is the primary cause of flooding",
+            "High humidity amplifies the effects of rain, making floods worse",
+            "Seasonal patterns affect how weather impacts flood risk (sine component)",
+            "Seasonal patterns affect how weather impacts flood risk (cosine component)",
+            "Rainfall interaction with North region increases flood risk",
+            "Rainfall interaction with Central region increases flood risk",
+            "Rainfall interaction with South region increases flood risk",
+            "North region has higher baseline flood risk",
+            "Central region has moderate baseline flood risk",
+            "South region has lower baseline flood risk",
+            "Unknown region has no baseline risk data"
+        ]
+        impact_df = pd.DataFrame({
+            "Feature": [f.replace('_', ' ').title() for f in all_features],
+            data_label: [f"{weather_data[f]:.1f}{units.get(f, '')}" if f in weather_data and f in ['max', 'rain', 'humidi', 'month_sin', 'month_cos', 'rain_north', 'rain_central', 'rain_south'] else f"{input_df.iloc[0][f]:.1f}" if f in ['max', 'rain', 'humidi', 'month_sin', 'month_cos', 'rain_north', 'rain_central', 'rain_south'] else f"{int(input_df.iloc[0][f])}" for f in all_features],
+            "Importance": [feature_importance_df.set_index('feature').loc[f, 'importance'] for f in all_features],
+            "Risk Note": risk_notes
         })
-        st.table(impact_table)
+        impact_df = impact_df.sort_values('Importance', ascending=False)
+        st.table(impact_df)
 
     except Exception as e:
         st.error(f"Critical Error: {str(e)}")
@@ -319,220 +340,9 @@ if st.session_state.pdf_data is not None:
         mime='application/pdf'
     )
 
-@st.fragment
-def scenario_simulator():
-    # Results Bar at the top
-    results_bar = st.empty()
-
-    st.write("Adjust these values to see how the AI risk changes. Use 'Analyze & Predict Risk' first for real data, or simulate with defaults.")
-
-    # Use actual weather data if available, else defaults
-    base_weather = st.session_state.weather_data if st.session_state.weather_data is not None else {
-        'rain': 10.0, 'rain_last_3_days': 50.0, 'humidi': 70.0, 'max': 25.0, 'min': 20.0, 'wind': 5.0, 'cloud': 50.0, 'pressure': 1010.0, 'month': 6
-    }
-    base_proba = st.session_state.proba if st.session_state.proba is not None else [0.6, 0.3, 0.1]  # Default probabilities
-
-    # Define scenario presets with more distinct values
-    scenarios = {
-        'Clear Sky': {'rain': 0.0, 'rain_last_3_days': 0.0, 'humidi': 60.0, 'max': 30.0, 'min': 25.0, 'wind': 5.0, 'cloud': 20.0, 'pressure': 1020.0},
-        'Heavy Monsoon': {'rain': 120.0, 'rain_last_3_days': 250.0, 'humidi': 85.0, 'max': 26.0, 'min': 22.0, 'wind': 8.0, 'cloud': 90.0, 'pressure': 1000.0},
-        'Approaching Typhoon': {'rain': 200.0, 'rain_last_3_days': 400.0, 'humidi': 95.0, 'max': 24.0, 'min': 20.0, 'wind': 18.0, 'cloud': 95.0, 'pressure': 980.0}
-    }
-
-    def reset_to_actual():
-        if st.session_state.weather_data is not None:
-            st.session_state.rain_s = st.session_state.weather_data['rain']
-            st.session_state.rain72_s = st.session_state.weather_data['rain_last_3_days']
-            st.session_state.hum_s = st.session_state.weather_data['humidi']
-            st.session_state.max_s = st.session_state.weather_data['max']
-            st.session_state.min_s = st.session_state.weather_data['min']
-            st.session_state.wind_s = st.session_state.weather_data['wind']
-            st.session_state.cloud_s = st.session_state.weather_data['cloud']
-            st.session_state.press_s = st.session_state.weather_data['pressure']
-
-    # Quick Scenario Dropdown
-    scenario_options = ['Custom', 'Clear Sky', 'Heavy Monsoon', 'Approaching Typhoon']
-    selected_scenario = st.selectbox("Quick Scenario", scenario_options, index=0)
-
-    # Update session state when scenario changes
-    if selected_scenario != st.session_state.get('previous_scenario', 'Custom'):
-        if selected_scenario != 'Custom':
-            preset = scenarios[selected_scenario]
-            st.session_state.rain_s = preset['rain']
-            st.session_state.rain72_s = preset['rain_last_3_days']
-            st.session_state.hum_s = preset['humidi']
-            st.session_state.max_s = preset['max']
-            st.session_state.min_s = preset['min']
-            st.session_state.wind_s = preset['wind']
-            st.session_state.cloud_s = preset['cloud']
-            st.session_state.press_s = preset['pressure']
-        st.session_state.previous_scenario = selected_scenario
-
-    # Reset to Actual Weather button (only if data available)
-    if st.session_state.weather_data is not None:
-        st.button("Reset to Actual Weather", on_click=reset_to_actual)
-
-    # Dashboard Layout: Side-by-side layout
-    left_col, right_col = st.columns([1, 1])
-
-    with left_col:
-        # Sliders in compact grid (nested columns)
-        slider_col1, slider_col2 = st.columns(2)
-        with slider_col1:
-            s_rain = st.slider("24h Rainfall (mm)", 0.0, 300.0, key="rain_s", step=0.1, help=">50mm is heavy rain, increases flood risk significantly.")
-            s_rain_72h = st.slider("72h Total (mm)", 0.0, 500.0, key="rain72_s", step=0.1, help="Accumulated rainfall over 3 days; high values indicate soil saturation.")
-            s_humidi = st.slider("Humidity (%)", 0.0, 100.0, key="hum_s", step=0.1, help="High humidity traps water vapor, amplifying rain's impact.")
-            s_max = st.slider("Max Temp (°C)", 0.0, 50.0, key="max_s", step=0.1, help="Higher temperatures can evaporate moisture, potentially lowering risk.")
-        with slider_col2:
-            s_min = st.slider("Min Temp (°C)", 0.0, 40.0, key="min_s", step=0.1, help="Lower temperatures may indicate cooler fronts or storms.")
-            s_wind = st.slider("Wind (m/s)", 0.0, 20.0, key="wind_s", step=0.1, help="Strong winds can drive storm surges or rapid weather changes.")
-            s_cloud = st.slider("Cloud (%)", 0.0, 100.0, key="cloud_s", step=0.1, help="Cloud cover indicates potential for precipitation.")
-            s_pressure = st.slider("Pressure (hPa)", 900.0, 1100.0, key="press_s", step=0.1, help="<1005hPa indicates a storm approaching.")
-
-        # Create test data with overrides using local variables
-        test_weather = base_weather.copy()
-        test_weather.update({
-            'rain': s_rain,
-            'rain_last_3_days': s_rain_72h,
-            'humidi': s_humidi,
-            'max': s_max,
-            'min': s_min,
-            'wind': s_wind,
-            'cloud': s_cloud,
-            'pressure': s_pressure,
-            'temp_diff': s_max - s_min,
-            'rain_humidi_interaction': s_rain * s_humidi
-        })
-        ml_features = ['max', 'min', 'wind', 'rain', 'humidi', 'cloud', 'pressure', 'month', 'rain_last_3_days', 'temp_diff', 'rain_humidi_interaction']
-        test_input_df = pd.DataFrame([test_weather])[ml_features]
-
-        # Predict with test data
-        test_proba = model.predict_proba(test_input_df)[0]
-        # Enhanced rule-based override for simulator: boost high risk if high rainfall or other extreme conditions
-        boost = 0
-        if test_weather['rain'] > 50:
-            boost += 0.2
-        if test_weather['rain_last_3_days'] > 150:
-            boost += 0.2
-        if test_weather['humidi'] > 80:
-            boost += 0.1
-        if test_weather['wind'] > 10:
-            boost += 0.1
-        if boost > 0:
-            test_proba[2] = min(1.0, test_proba[2] + boost)
-            test_proba[0] = max(0, test_proba[0] - boost * 0.5)
-            test_proba[1] = max(0, min(1, test_proba[1] - boost * 0.5))
-            # Normalize probabilities
-            total = sum(test_proba)
-            test_proba = [p / total for p in test_proba]
-        thresholds = {0: 0.5, 1: 0.3, 2: 0.2}
-        test_prediction = 0
-        if test_proba[2] > thresholds[2]:
-            test_prediction = 2
-        elif test_proba[1] > thresholds[1]:
-            test_prediction = 1
-        risk_labels = {0: 'Low', 1: 'Medium', 2: 'High'}
-        test_risk = risk_labels[test_prediction]
-        test_confidence = max(test_proba) * 100
-
-        # Interactive Calculation Explanation
-        with st.expander("Interactive Calculation Breakdown", expanded=True):
-            st.write("### Prediction Pipeline")
-
-            # Create three visual stages
-            step1, step2, step3 = st.columns(3)
-
-            with step1:
-                st.markdown("#### 1. ML Engine")
-                st.caption("Analyzing 11 weather features")
-                st.code(f"Low: {base_proba[0]:.1%}\nMed: {base_proba[1]:.1%}\nHigh: {base_proba[2]:.1%}")
-
-            with step2:
-                st.markdown("#### 2. Expert Rules")
-                st.caption("Applying local thresholds")
-                if boost > 0:
-                    st.error(f"Boost: +{boost:.0%}")
-                else:
-                    st.success("Normal")
-
-                # Status Tiles for Rules
-                st.write("**Rule Engine Activity:**")
-
-                def get_status(condition):
-                    return "ACTIVE" if condition else "INACTIVE"
-
-                def get_icon(condition):
-                    return "🔴" if condition else "🟢"
-
-                r1, r2 = st.columns(2)
-                r1.markdown(f"{get_icon(test_weather['rain'] > 50)} **Heavy Rain**\n{get_status(test_weather['rain'] > 50)}")
-                r2.markdown(f"{get_icon(test_weather['rain_last_3_days'] > 150)} **Saturated Soil**\n{get_status(test_weather['rain_last_3_days'] > 150)}")
-
-                r3, r4 = st.columns(2)
-                r3.markdown(f"{get_icon(test_weather['humidi'] > 80)} **High Humidity**\n{get_status(test_weather['humidi'] > 80)}")
-                r4.markdown(f"{get_icon(test_weather['wind'] > 10)} **Storm Wind**\n{get_status(test_weather['wind'] > 10)}")
-
-            with step3:
-                st.markdown("#### 3. Final Result")
-                st.caption("Normalized Probability")
-                color = "red" if test_risk == "High" else "orange" if test_risk == "Medium" else "green"
-                st.markdown(f"<h2 style='color:{color};'>{test_risk}</h2>", unsafe_allow_html=True)
-                st.metric("Confidence", f"{test_confidence:.1f}%")
-
-            # Visualize the "Boost" Logic with a Horizontal Bar Chart
-            st.write("### Risk Contribution Factors")
-            impact_data = {
-                "Base Model": base_proba[2],
-                "Rainfall Boost": 0.2 if test_weather['rain'] > 50 else 0,
-                "Saturation Boost": 0.2 if test_weather['rain_last_3_days'] > 150 else 0,
-                "Humidity Boost": 0.1 if test_weather['humidi'] > 80 else 0,
-                "Wind Boost": 0.1 if test_weather['wind'] > 10 else 0
-            }
-
-            fig_impact = go.Figure(go.Bar(
-                x=list(impact_data.values()),
-                y=list(impact_data.keys()),
-                orientation='h',
-                marker_color=['#1c83e1', '#ff4b4b', '#ff4b4b', '#ff4b4b', '#ff4b4b']
-            ))
-            fig_impact.update_layout(
-                title="Factors Increasing High-Risk Probability",
-                height=300,
-                xaxis_title="Probability Boost",
-                yaxis_title=""
-            )
-            st.plotly_chart(fig_impact, use_container_width=True)
-
-            # Mathematical Clarity
-            st.write("### Mathematical Formula")
-            st.latex(r"P(Risk_{final}) = \frac{Clip(P_{base} + Boost, 0, 1)}{\sum Clip(P + Boost)}")
-            st.caption("Probabilities are clipped to [0,1] range and renormalized to sum to 1")
-
-    with right_col:
-        # Update Results Bar
-        with results_bar.container():
-            rb_col1, rb_col2 = st.columns(2)
-            with rb_col1:
-                st.metric("Predicted Risk", test_risk)
-            with rb_col2:
-                st.metric("Confidence Score", f"{test_confidence:.1f}%")
-
-        # Display risk level and confidence
-        if test_risk == 'Low':
-            st.success(f"### 🟢 {test_risk} RISK")
-        elif test_risk == 'Medium':
-            st.warning(f"### 🟡 {test_risk} RISK")
-        else:
-            st.error(f"### 🔴 {test_risk} RISK")
-        st.metric("Simulated Confidence", f"{test_confidence:.1f}%")
-
-        # Show probability change
-        st.write("**Probability Changes:**")
-        for i, label in enumerate(['Low', 'Medium', 'High']):
-            delta = test_proba[i] - base_proba[i]
-            st.metric(f"{label} Risk", f"{test_proba[i]:.1%}", f"{delta:+.1%}")
-
 # 4. Interactive "What-If" Scenario Simulator (always available)
 st.divider()
 with st.expander("🧪 Scenario Simulator (Manual Override)"):
-    scenario_simulator()
+    scenario_simulator(city)
+
+

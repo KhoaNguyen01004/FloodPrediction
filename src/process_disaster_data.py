@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 import math
 import numpy as np
+from .utils import strip_accents
 
 def load_city_coords():
     """Load city coordinates from JSON."""
@@ -82,14 +83,40 @@ def create_location_to_cities_mapping():
     }
     return mapping
 
+def create_city_to_region_mapping():
+    """Map individual cities to broader regions for debiasing."""
+    region_mapping = {
+        # North
+        'Hanoi': 'North', 'Hai Phong': 'North', 'Quang Ninh': 'North', 'Thai Nguyên': 'North',
+        'Phu Tho': 'North', 'Bac Ninh': 'North', 'Hung Yen': 'North', 'Ninh Binh': 'North',
+        'Cao Bang': 'North', 'Lai Chau': 'North', 'Dien Bien': 'North', 'Son La': 'North',
+        'Lang Son': 'North', 'Tuyen Quang': 'North', 'Lao Cai': 'North',
+
+        # Central
+        'Thanh Hoa': 'Central', 'Nghe An': 'Central', 'Ha Tinh': 'Central', 'Quang Tri': 'Central',
+        'Hue': 'Central', 'Da Nang': 'Central', 'Quang Ngai': 'Central', 'Gia Lai': 'Central',
+        'Dak Lak': 'Central', 'Lam Dong': 'Central', 'Khanh Hoa': 'Central',
+
+        # South
+        'Ho Chi Minh City': 'South', 'Dong Nai': 'South', 'Tay Ninh': 'South', 'Can Tho': 'South',
+        'An Giang': 'South', 'Dong Thap': 'South', 'Vinh Long': 'South', 'Ca Mau': 'South'
+    }
+    return region_mapping
+
 def process_disaster_data():
     """Process disaster data for flood prediction training."""
     # Load city coordinates
     city_coords = load_city_coords()
     city_dict = {name.lower(): (lat, lon) for name, lat, lon in city_coords}
 
+    # Load region mapping for debiasing
+    region_mapping = create_city_to_region_mapping()
+
     # Load disaster data
     df = pd.read_csv('data/raw/disaster_in_vietnam.csv')
+
+    # Normalize city names in disaster data to match UI
+    df['Location'] = df['Location'].apply(lambda x: strip_accents(str(x)) if pd.notna(x) else x)
 
     # Filter for floods in Vietnam, 2005-2023
     df = df[(df['Disaster Type'] == 'Flood') &
@@ -188,9 +215,13 @@ def process_disaster_data():
                     max_temp = np.random.uniform(10, 35)
                     min_temp = np.random.uniform(5, 30)
                     wind = np.random.uniform(1, 25)
-                    pressure = np.random.uniform(980, 1018)
+
+                # Get region for debiasing
+                region = region_mapping.get(city_name, 'Unknown')
 
                 sample = {
+                    'city': city_name,
+                    'region': region,
                     'max': max_temp,
                     'min': min_temp,
                     'wind': wind,
@@ -224,6 +255,20 @@ def process_disaster_data():
 
     print(f"Processed {len(training_df)} training samples")
     print(training_df['flood_risk'].value_counts())
+
+    # Generate feature correlation heatmap
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    os.makedirs('models', exist_ok=True)
+    plt.figure(figsize=(10,8))
+    corr = training_df[['max', 'min', 'wind', 'rain', 'humidi', 'cloud', 'pressure', 'month', 'rain_last_3_days', 'flood_risk']].corr()
+    sns.heatmap(corr, annot=True, cmap='coolwarm', fmt='.2f')
+    plt.title('Feature Correlation Heatmap')
+    plt.tight_layout()
+    plt.savefig('models/feature_correlation.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print("Feature correlation heatmap saved to models/feature_correlation.png")
 
 if __name__ == '__main__':
     process_disaster_data()
