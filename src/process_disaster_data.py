@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 import math
 import numpy as np
-from .utils import strip_accents
+from utils import strip_accents
 
 def load_city_coords():
     """Load city coordinates from JSON."""

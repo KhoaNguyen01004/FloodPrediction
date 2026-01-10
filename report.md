@@ -212,13 +212,14 @@ The modification logic works as follows:
 This ensures that extreme weather conditions trigger appropriate risk elevations, even if the ML model is uncertain.
 
 Table 5.1: Expert Rule Thresholds
-These thresholds are based on meteorological expertise and historical flood analysis in Vietnam. The probability boost values (+0.2, +0.1) were calibrated through heuristic tuning to ensure that extreme conditions consistently push predictions into higher risk categories. For instance, these values were selected to guarantee that rainfall >200mm would elevate a "Medium" ML prediction to "High" risk, based on Vietnam's historical flood records showing that such rainfall levels precede major flooding events.
+These thresholds are based on meteorological expertise and historical flood analysis in Vietnam. The probability boost values (+0.2, +0.1) were calibrated through heuristic tuning to ensure that extreme conditions consistently push predictions into higher risk categories. For instance, these values were selected to guarantee that rainfall >50mm or 3-day cumulative rainfall >100mm would elevate a "Medium" ML prediction to "High" risk, based on Vietnam's historical flood records showing that such rainfall levels contribute to flooding when combined with other factors.
 
 | Variable | Threshold Value | Probability Boost (+0.x) | Justification |
 |----------|-----------------|--------------------------|---------------|
-| Rain    | 200mm          | +0.2                    | Extreme rainfall (>200mm in 24h) historically precedes major floods in Vietnam's river basins |
-| Wind    | 15m/s          | +0.1                    | High winds (>15m/s) indicate approaching typhoons that often bring destructive storm surges and heavy rain |
-| Humidity| 95%           | +0.1                    | Extremely high humidity combined with rain signals saturated atmospheric conditions |
+| Rain    | 50mm          | +0.2                    | Moderate rainfall that can contribute to flooding when combined with other factors |
+| 3-Day Cumulative Rain | 100mm | +0.2 | Accumulated rainfall over 3 days indicating soil saturation and increased runoff potential |
+| Humidity| 70%           | +0.1                    | High humidity levels amplifying the effects of rainfall |
+| Wind    | 8m/s          | +0.1                    | Moderate winds that may indicate approaching weather systems |
 
 The probability boosts are additive to the High risk class, ensuring that these conditions elevate the risk assessment appropriately. For example, if ML predicts P(High)=0.3 and rain>200mm, the final P(High)=0.5, potentially changing the classification from Medium to High risk.
 
