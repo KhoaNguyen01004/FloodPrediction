@@ -2,7 +2,7 @@
 
 A machine learning-powered Streamlit application for predicting flood risk in Vietnam using real-time/historical weather data, historical flood patterns from EM-DAT disaster database, and expert rule overrides for safety. The system combines XGBoost gradient boosting with rule-based enhancements for accurate, conservative flood risk assessments across Vietnam's 34 administrative subdivisions.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://vietnam-flood-prediction.streamlit.app/)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://khoavietanhnguyenfloodprediction.streamlit.app/)
 
 ## 📋 Overview
 
